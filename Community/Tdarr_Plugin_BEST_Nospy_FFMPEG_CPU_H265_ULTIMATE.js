@@ -12,75 +12,150 @@ const details = () => ({
                 This plugin will skip any files that are in the VP9 codec.`,
   Version: '0.1',
   Tags: 'pre-processing,ffmpeg,video only,configurable,h265',
-  Inputs: [{
-    name: 'container',
-    type: 'string',
-    defaultValue: 'mkv',
-    inputUI: {
-      type: 'dropdown',
-      options: [
-        'mkv',
-        'mp4',
-        'original',
-      ],
-    },
-    tooltip: `Specify output container of file. Use 'original' without quotes to keep original container.
-                  \\n Ensure that all stream types you may have are supported by your chosen container.
-                  \\n mkv is recommended.
-                    \\nExample:\\n
-                    mkv
-
-                    \\nExample:\\n
-                    mp4
-                                        
-                    \\nExample:\\n
-                    original`,
-  },
-  {
-    name: 'bitrate_cutoff',
-    type: 'string',
-    defaultValue: '',
-    inputUI: {
-      type: 'text',
-    },
-    tooltip: `Specify bitrate cutoff, files with a current bitrate lower then this will not be transcoded.
-                  \\n Rate is in kbps.
-                  \\n Leave empty to disable.
-                    \\nExample:\\n
-                    6000
-
-                    \\nExample:\\n
-                    4000`,
-  }, {
-    name: 'enable_10bit',
-    type: 'boolean',
-    defaultValue: false,
-    inputUI: {
-      type: 'dropdown',
-      options: [
-        'false',
-        'true',
-      ],
-    },
-    tooltip: `Specify if output file should be 10bit. Default is false.
+  Inputs: [
+    {
+      name: 'anime',
+      type: 'boolean',
+      defaultValue: false,
+      inputUI: {
+        type: 'dropdown',
+        options: [
+          'false',
+          'true',
+        ],
+      },
+      tooltip: `Specify if file is anime.
                     \\nExample:\\n
                     true
 
                     \\nExample:\\n
                     false`,
-  },
-  {
-    name: 'force_conform',
-    type: 'boolean',
-    defaultValue: false,
-    inputUI: {
-      type: 'dropdown',
-      options: [
-        'false',
-        'true',
-      ],
     },
-    tooltip: `Make the file conform to output containers requirements.
+    {
+      name: 'container',
+      type: 'string',
+      defaultValue: 'mkv',
+      inputUI: {
+        type: 'dropdown',
+        options: [
+          'mkv',
+          'mp4',
+          'original',
+        ],
+      },
+      tooltip: `Specify output container of file. Use 'original' without quotes to keep original container.
+                  \\n Ensure that all stream types you may have are supported by your chosen container.
+                  \\n mkv is recommended.`
+      ,
+    },
+    {
+      name: 'handle_hd',
+      type: 'boolean',
+      defaultValue: true,
+      inputUI: {
+        type: 'dropdown',
+        options: [
+          'false',
+          'true',
+        ],
+      },
+      tooltip: `Specify if HD content should be handled.
+                    \\nExample:\\n
+                    true
+
+                    \\nExample:\\n
+                    false`,
+    },
+    {
+      name: 'hd_bitrate_cutoff',
+      type: 'number',
+      defaultValue: 1800,
+      inputUI: {
+        type: 'text',
+      },
+      tooltip: `Specify the bitrate cutoff for HD content.
+                    \\nExample:\\n
+                    1800
+                    
+                    \\nExample:\\n
+                    2500`,
+    },
+    {
+      name: 'handle_fhd',
+      type: 'boolean',
+      defaultValue: true,
+      inputUI: {
+        type: 'dropdown',
+        options: [
+          'false',
+          'true',
+        ],
+      },
+      tooltip: `Specify if FHD content should be handled.
+                    \\nExample:\\n
+                    true
+                    
+                    \\nExample:\\n
+                    false`,
+    },
+    {
+      name: 'fhd_bitrate_cutoff',
+      type: 'number',
+      defaultValue: 2500,
+      inputUI: {
+        type: 'text',
+      },
+      tooltip: `Specify the bitrate cutoff for FHD content.
+                    \\nExample:\\n
+                    2500
+                    
+                    \\nExample:\\n
+                    3500`,
+    },
+    {
+      name: 'handle_uhd',
+      type: 'boolean',
+      defaultValue: false,
+      inputUI: {
+        type: 'dropdown',
+        options: [
+          'false',
+          'true',
+        ],
+      },
+      tooltip: `Specify if UHD content should be handled.
+                    \\nExample:\\n
+                    true
+
+                    \\nExample:\\n
+                    false`,
+    },
+    {
+      name: 'uhd_bitrate_cutoff',
+      type: 'number',
+      defaultValue: 6000,
+      inputUI: {
+        type: 'text',
+      },
+      tooltip: `Specify the bitrate cutoff for UHD content.
+                    \\nExample:\\n
+                    6000
+                    
+                    \\nExample:\\n
+                    8000`,
+    },
+    {
+      name: 'force_conform',
+      type: 'boolean',
+      defaultValue: false,
+      inputUI: {
+        type: 'dropdown',
+        options: [
+          'false',
+          'true',
+        ],
+      },
+      tooltip: `Make the file conform to output containers requirements.
                 \\n Drop hdmv_pgs_subtitle/eia_608/subrip/timed_id3 for MP4.
                 \\n Drop data streams/mov_text/eia_608/timed_id3 for MKV.
                 \\n Default is false.
@@ -89,7 +164,7 @@ const details = () => ({
 
                     \\nExample:\\n
                     false`,
-  },
+    },
   ],
 });
 
@@ -107,7 +182,15 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
     infoLog: '',
   };
 
-  let duration = '';
+  const resolutions = {
+    r480p: '480p',
+    r576p: '576p',
+    r720p: '720p',
+    r1080p: '1080p',
+    r4KUHD: '4k',
+    rDCI4K: '4k',
+    rOther: 'Other',
+  };
 
   // Check if inputs.container has been configured. If it hasn't then exit plugin.
   if (inputs.container === '') {
@@ -119,45 +202,113 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   if (inputs.container === 'original') {
     // eslint-disable-next-line no-param-reassign
     inputs.container = `${file.container}`;
-    response.container = `.${file.container}`;
-  } else {
-    response.container = `.${inputs.container}`;
   }
+  response.container = `.${inputs.container}`;
 
-  // Check if file is a video. If it isn't then exit plugin.
+  // Check if file is a video and has a codec and resolution.
   if (file.fileMedium !== 'video') {
     response.processFile = false;
     response.infoLog += 'File is not a video. \n';
     return response;
   }
 
-  // Check if duration info is filled, if so times it by 0.0166667 to get time in minutes.
-  // If not filled then get duration of stream 0 and do the same.
-  if (parseFloat(file.ffProbeData?.format?.duration) > 0) {
-    duration = parseFloat(file.ffProbeData?.format?.duration) * 0.0166667;
-  } else if (typeof file.meta.Duration !== 'undefined') {
-    duration = file.meta.Duration * 0.0166667;
-  } else {
-    duration = file.ffProbeData.streams[0].duration * 0.0166667;
+  if (!file.ffProbeData.streams[0].codec_name) {
+    response.processFile = false;
+    response.infoLog += 'Cannot read codec name. \n';
+    return response;
   }
 
+  if (!file.video_resolution) {
+    response.processFile = false;
+    response.infoLog += 'Cannot read video resolution. \n';
+    return response;
+  }
+
+  // Retrieve current video bitrate and resolution.
+  let currentBitrate = file.ffProbeData.streams[0].bit_rate;
+  if (Number.isNaN(currentBitrate)) {
+    currentBitrate = file.bit_rate;
+  }
+  const videoResolution = file.video_resolution;
+  const codecName = file.ffProbeData.streams[0].codec_name.toLowerCase();
+
   // Set up required variables.
-  let videoIdx = -1;
   let extraArguments = '';
   let bitrateSettings = '';
-  // Work out currentBitrate using "Bitrate = file size / (number of minutes * .0075)"
-  // Used from here https://blog.frame.io/2017/03/06/calculate-video-bitrates/
-  // eslint-disable-next-line no-bitwise
-  const currentBitrate = ~~(file.file_size / (duration * 0.0075));
-  // Use the same calculation used for currentBitrate but divide it in half to get targetBitrate.
-  // Logic of h265 can be half the bitrate as h264 without losing quality.
-  // eslint-disable-next-line no-bitwise
-  const targetBitrate = ~~(file.file_size / (duration * 0.0075) / 2);
+  // Target bitrate is calculated based on current bitrate and resolution.
+  const targetBitrate = 0;
   // Allow some leeway under and over the targetBitrate.
-  // eslint-disable-next-line no-bitwise
-  const minimumBitrate = ~~(targetBitrate * 0.7);
-  // eslint-disable-next-line no-bitwise
-  const maximumBitrate = ~~(targetBitrate * 1.3);
+  const minimumBitrate = 0;
+  const maximumBitrate = 0;
+  const preset = 'medium';
+
+  if ([resolutions.r480p, resolutions.r576p, resolutions.rOther].includes(videoResolution)) {
+    // We have a SD video, abort.
+    response.infoLog += 'SD video detected. \n';
+    response.processFile = false;
+    return response;
+  }
+
+  if (videoResolution === resolutions.r720p) {
+    // We have a HD video.
+    response.infoLog += 'HD video detected. \n';
+    if (inputs.handle_hd === false) {
+      response.infoLog += 'HD handling disabled. \n';
+      response.processFile = false;
+      return response;
+    }
+    if (inputs.hd_bitrate_cutoff !== '' && currentBitrate <= inputs.hd_bitrate_cutoff) {
+      response.infoLog += `Bitrate is below ${inputs.hd_bitrate_cutoff} (${currentBitrate}). \n`;
+      response.processFile = false;
+      return response;
+    }
+    // todo: is anime ?
+    // todo: set videoBitrate with a multiplier on current bitrate
+    // todo: set videoMinBitrate with a multiplier based on videoBitrate
+    // todo: set videoMaxBitrate with a multiplier based on videoBitrate
+    // todo: set preset
+  } else if (videoResolution === resolutions.r1080p) {
+    // We have a FHD video.
+    response.infoLog += 'FHD video detected. \n';
+    if (inputs.handle_fhd === false) {
+      response.infoLog += 'FHD handling disabled. \n';
+      response.processFile = false;
+      return response;
+    }
+    if (inputs.fhd_bitrate_cutoff !== '' && currentBitrate <= inputs.fhd_bitrate_cutoff) {
+      response.infoLog += `Bitrate is below ${inputs.fhd_bitrate_cutoff} (${currentBitrate}). \n`;
+      response.processFile = false;
+      return response;
+    }
+    // todo: is anime ?
+    // todo: set videoBitrate with a multiplier on current bitrate
+    // todo: set videoMinBitrate with a multiplier based on videoBitrate
+    // todo: set videoMaxBitrate with a multiplier based on videoBitrate
+    // todo: set preset
+  } else if (videoResolution === resolutions.r4KUHD || videoResolution === resolutions.rDCI4K) {
+    // We have a UHD video.
+    response.infoLog += 'UHD video detected. \n';
+    if (inputs.handle_uhd === false) {
+      response.infoLog += 'UHD handling disabled. \n';
+      response.processFile = false;
+      return response;
+    }
+    if (currentBitrate <= inputs.uhd_bitrate_cutoff) {
+      response.infoLog += `Bitrate is below ${inputs.uhd_bitrate_cutoff} (${currentBitrate}). \n`;
+      response.processFile = false;
+      return response;
+    }
+    // todo: is anime ?
+    // todo: set videoBitrate with a multiplier on current bitrate
+    // todo: set videoMinBitrate with a multiplier based on videoBitrate
+    // todo: set videoMaxBitrate with a multiplier based on videoBitrate
+    // todo: set preset
+  } else {
+    // We have a video with an unknown resolution.
+    response.infoLog += 'Unknown video resolution detected. \n';
+    response.processFile = false;
+    return response;
+  }
 
   // If targetBitrate comes out as 0 then something has gone wrong and bitrates could not be calculcated.
   // Cancel plugin completely.
@@ -165,19 +316,6 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
     response.processFile = false;
     response.infoLog += 'Target bitrate could not be calculated. Skipping this plugin. \n';
     return response;
-  }
-
-  // Check if inputs.bitrate cutoff has something entered.
-  // (Entered means user actually wants something to happen, empty would disable this).
-  if (inputs.bitrate_cutoff !== '') {
-    // Checks if currentBitrate is below inputs.bitrate_cutoff
-    // If so then cancel plugin without touching original files.
-    if (currentBitrate <= inputs.bitrate_cutoff) {
-      response.processFile = false;
-      response.infoLog += 'Current bitrate is below set bitrate cutoff '
-        + `of ${inputs.bitrate_cutoff}. Nothing to do, cancelling plugin. \n`;
-      return response;
-    }
   }
 
   // Check if force_conform option is checked.
@@ -224,54 +362,22 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
     }
   }
 
-  // Check if 10bit variable is true.
-  if (inputs.enable_10bit === true) {
-    // If set to true then add 10bit argument
-    extraArguments += '-pix_fmt p010le ';
+  // Check if codec of stream is hevc or vp9
+  // AND file.container matches inputs.container.
+  // If so then skip file.
+  if ((codecName === 'hevc' || codecName === 'vp9') && file.container === `${inputs.container}`) {
+    response.processFile = false;
+    response.infoLog += `File is already hevc or vp9 & in ${inputs.container}. \n`;
+    return response;
   }
-
-  // Go through each stream in the file.
-  for (let i = 0; i < file.ffProbeData.streams.length; i++) {
-    // Check if stream is a video.
-    let codec_type = '';
-    try {
-      codec_type = file.ffProbeData.streams[i].codec_type.toLowerCase();
-    } catch (err) {
-      // err
-    }
-    if (codec_type === 'video') {
-      // Check if codec of stream is mjpeg/png.
-      // If so then remove this "video" stream.
-      // mjpeg/png are usually embedded pictures that can cause havoc with plugins.
-      if (file.ffProbeData.streams[i].codec_name === 'mjpeg' || file.ffProbeData.streams[i].codec_name === 'png') {
-        extraArguments += `-map -v:${videoIdx} `;
-      }
-      // Check if codec of stream is hevc or vp9
-      // AND check if file.container matches inputs.container.
-      // If so nothing for plugin to do.
-      if (
-        (file.ffProbeData.streams[i].codec_name === 'hevc' || file.ffProbeData.streams[i].codec_name === 'vp9')
-        && file.container === `${inputs.container}`
-      ) {
-        response.processFile = false;
-        response.infoLog += `File is already hevc or vp9 & in ${inputs.container}. \n`;
-        return response;
-      }
-      // Check if codec of stream is hevc or vp9
-      // AND check if file.container does NOT match inputs.container.
-      // If so remux file.
-      if (
-        (file.ffProbeData.streams[i].codec_name === 'hevc' || file.ffProbeData.streams[i].codec_name === 'vp9')
-        && file.container !== `${inputs.container}`
-      ) {
-        response.infoLog += `File is hevc or vp9 but is not in ${inputs.container} container. Remuxing. \n`;
-        response.preset = `, -map 0 -c copy ${extraArguments}`;
-        response.processFile = true;
-        return response;
-      }
-      // Increment videoIdx.
-      videoIdx += 1;
-    }
+  // Check if codec of stream is hevc or vp9
+  // AND check if file.container does NOT match inputs.container.
+  // If so remux file.
+  if ((codecName === 'hevc' || codecName === 'vp9') && file.container !== `${inputs.container}`) {
+    response.infoLog += `File is hevc or vp9 but is not in ${inputs.container} container. Remuxing. \n`;
+    response.preset = `, -map 0 -c copy ${extraArguments}`;
+    response.processFile = true;
+    return response;
   }
 
   // Set bitrateSettings variable using bitrate information calulcated earlier.
@@ -284,9 +390,11 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   response.infoLog += `Target = ${targetBitrate} \n`;
   response.infoLog += `Minimum = ${minimumBitrate} \n`;
   response.infoLog += `Maximum = ${maximumBitrate} \n`;
+  response.infoLog += `Buffer = ${currentBitrate} \n`;
+  response.infoLog += `Preset = ${preset} \n`;
 
   response.preset += `,-map 0 -c:v libx265 ${bitrateSettings} `
-    + `-c:a copy -c:s copy -max_muxing_queue_size 9999 ${extraArguments}`;
+    + `-c:a copy -c:s copy -max_muxing_queue_size 9999 ${extraArguments} -preset ${preset} `;
   response.processFile = true;
   response.infoLog += 'File is not hevc or vp9. Transcoding. \n';
   return response;
