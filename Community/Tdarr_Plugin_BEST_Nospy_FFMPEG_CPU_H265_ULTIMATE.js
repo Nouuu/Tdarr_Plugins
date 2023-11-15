@@ -399,5 +399,50 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   response.infoLog += 'File is not hevc or vp9. Transcoding. \n';
   return response;
 };
+
+// Bitrate settings maps
+const bitrateSettingsMap = {
+  general: {
+    '720p': [{
+      cutoff: 1200, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+    },
+    {
+      cutoff: 1800, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    },
+    {
+      cutoff: 2400, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    }],
+    // Add entries for 1080p, 4K, etc.
+  },
+  anime: {
+    '720p': [{
+      cutoff: 1000, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+    },
+    {
+      cutoff: 1500, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    },
+    {
+      cutoff: 2000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    }],
+    // Add entries for 1080p, 4K, etc.
+  },
+};
+
+const calculateBitrateSettings = (resolution, currentBitrate, isAnime) => {
+  const settingsMap = isAnime ? bitrateSettingsMap.anime : bitrateSettingsMap.general;
+  const settings = settingsMap[resolution].find((setting) => currentBitrate > setting.cutoff);
+
+  if (!settings) return null; // Return null if no settings match
+
+  const targetBitrate = currentBitrate * settings.multiplier;
+  const minimumBitrate = targetBitrate * (settings.minPercentage / 100);
+  const maximumBitrate = targetBitrate * (settings.maxPercentage / 100);
+  const { preset } = settings;
+
+  return {
+    targetBitrate, minimumBitrate, maximumBitrate, preset,
+  };
+};
+
 module.exports.details = details;
 module.exports.plugin = plugin;
