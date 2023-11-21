@@ -248,9 +248,9 @@ const calculateBitrateSettings = (resolution, currentBitrate, isAnime) => {
 
   if (!settings) return null; // Return null if no settings match
 
-  const targetBitrate = currentBitrate * settings.multiplier;
-  const minimumBitrate = targetBitrate * (settings.minPercentage / 100);
-  const maximumBitrate = targetBitrate * (settings.maxPercentage / 100);
+  const targetBitrate = Math.round(currentBitrate * settings.multiplier);
+  const minimumBitrate = Math.round(targetBitrate * (settings.minPercentage / 100));
+  const maximumBitrate = Math.round(targetBitrate * (settings.maxPercentage / 100));
   const { preset } = settings;
 
   return {
@@ -291,7 +291,7 @@ const conformStreams = (file, container) => {
   return extraArguments;
 };
 
-const handleResolution = (file, resolution, handleFlag, bitrateCutoff, isAnime) => {
+const handleVideo = (file, resolution, handleFlag, bitrateCutoff, isAnime) => {
   const response = { processFile: false, infoLog: '' };
   response.infoLog += `${resolution} video detected. \n`;
   if (!handleFlag) {
@@ -299,16 +299,21 @@ const handleResolution = (file, resolution, handleFlag, bitrateCutoff, isAnime) 
     return response;
   }
   let currentBitrate = file.ffProbeData.streams[0].bit_rate;
-  if (Number.isNaN(currentBitrate)) {
-    currentBitrate = file.bit_rate;
+  if (Number.isNaN(currentBitrate) || !currentBitrate || currentBitrate === 0) {
+    response.infoLog += 'Cannot read video stream bitrate. Using file bitrate. \n';
+    currentBitrate = file.ffProbeData.format.bit_rate;
   }
+  currentBitrate = Math.round(currentBitrate / 1000);
+  response.currentBitrate = currentBitrate;
+  response.infoLog += `Current video bitrate = ${currentBitrate} \n`;
   if (currentBitrate <= bitrateCutoff) {
     response.infoLog += `Bitrate is below ${bitrateCutoff} (${currentBitrate}). \n`;
     return response;
   }
   const bitrateSettings = calculateBitrateSettings(resolution, currentBitrate, isAnime);
   if (!bitrateSettings) {
-    response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
+    response.infoLog
+      += `Current bitrate (${currentBitrate}) is below cutoff or unsupported resolution. Skipping transcoding.\n`;
     return response;
   }
 
@@ -385,11 +390,6 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
     return response;
   }
 
-  // Retrieve current video bitrate and resolution.
-  let currentBitrate = file.ffProbeData.streams[0].bit_rate;
-  if (Number.isNaN(currentBitrate)) {
-    currentBitrate = file.bit_rate;
-  }
   const videoResolution = file.video_resolution;
   const codecName = file.ffProbeData.streams[0].codec_name.toLowerCase();
 
@@ -404,7 +404,7 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
 
   switch (videoResolution) {
     case resolutions.r720p:
-      resolutionSettings = handleResolution(
+      resolutionSettings = handleVideo(
         file,
         '720p',
         handleFlags.handle_hd,
@@ -413,7 +413,7 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
       );
       break;
     case resolutions.r1080p:
-      resolutionSettings = handleResolution(
+      resolutionSettings = handleVideo(
         file,
         '1080p',
         handleFlags.handle_fhd,
@@ -423,7 +423,7 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
       break;
     case resolutions.r4KUHD:
     case resolutions.rDCI4K:
-      resolutionSettings = handleResolution(
+      resolutionSettings = handleVideo(
         file,
         '4k',
         handleFlags.handle_uhd,
@@ -446,6 +446,7 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   // Set up required variables.
   let extraArguments = '';
   // Apply calculated bitrate settings.
+  const { currentBitrate } = resolutionSettings;
   const { targetBitrate } = resolutionSettings.bitrateSettings;
   // Allow some leeway under and over the targetBitrate.
   const { minimumBitrate } = resolutionSettings.bitrateSettings;
