@@ -212,6 +212,39 @@ const calculateBitrateSettings = (resolution, currentBitrate, isAnime) => {
   };
 };
 
+const conformStreams = (file, container) => {
+  const subtitleCodecsMkv = ['mov_text', 'eia_608', 'timed_id3'];
+  const subtitleCodecsMp4 = ['hdmv_pgs_subtitle', 'eia_608', 'subrip', 'timed_id3'];
+  let extraArguments = '';
+
+  if (container === 'mkv') {
+    // Remove data from streams
+    extraArguments += '-map -0:d ';
+    file.ffProbeData.streams.forEach((stream, index) => {
+      try {
+        if (subtitleCodecsMkv.includes(stream.codec_name.toLowerCase())) {
+          // Remove unwanted subtitle streams
+          extraArguments += `-map -0:${index} `;
+        }
+      } catch (err) {
+        // Handle error
+      }
+    });
+  } else if (container === 'mp4') {
+    file.ffProbeData.streams.forEach((stream, index) => {
+      try {
+        if (subtitleCodecsMp4.includes(stream.codec_name.toLowerCase())) {
+          // Remove unwanted subtitle streams
+          extraArguments += `-map -0:${index} `;
+        }
+      } catch (err) {
+        // Handle error
+      }
+    });
+  }
+  return extraArguments;
+};
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const plugin = (file, librarySettings, inputs, otherArguments) => {
   const lib = require('../methods/lib')();
@@ -375,35 +408,7 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   // Check if force_conform option is checked.
   // If so then check streams and add any extra parameters required to make file conform with output format.
   if (inputs.force_conform === true) {
-    const container = inputs.container.toLowerCase();
-    const subtitleCodecsMkv = ['mov_text', 'eia_608', 'timed_id3'];
-    const subtitleCodecsMp4 = ['hdmv_pgs_subtitle', 'eia_608', 'subrip', 'timed_id3'];
-
-    if (container === 'mkv') {
-      // Remove data from streams
-      extraArguments += '-map -0:d ';
-      file.ffProbeData.streams.forEach((stream, index) => {
-        try {
-          if (subtitleCodecsMkv.includes(stream.codec_name.toLowerCase())) {
-            // Remove unwanted subtitle streams
-            extraArguments += `-map -0:${index} `;
-          }
-        } catch (err) {
-          // Handle error
-        }
-      });
-    } else if (container === 'mp4') {
-      file.ffProbeData.streams.forEach((stream, index) => {
-        try {
-          if (subtitleCodecsMp4.includes(stream.codec_name.toLowerCase())) {
-            // Remove unwanted subtitle streams
-            extraArguments += `-map -0:${index} `;
-          }
-        } catch (err) {
-          // Handle error
-        }
-      });
-    }
+    extraArguments += conformStreams(file, inputs.container.toLowerCase());
   }
 
   // Check if codec of stream is hevc or vp9
