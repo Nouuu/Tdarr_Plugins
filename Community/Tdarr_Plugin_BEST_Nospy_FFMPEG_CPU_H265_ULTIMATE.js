@@ -171,28 +171,74 @@ const details = () => ({
 // Bitrate settings maps
 const bitrateSettingsMap = {
   general: {
-    '720p': [{
-      cutoff: 1200, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
-    },
-    {
-      cutoff: 1800, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    },
-    {
-      cutoff: 2400, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    }],
-    // Add entries for 1080p, 4K, etc.
+    '720p': [
+      {
+        cutoff: 1200, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+      },
+      {
+        cutoff: 1800, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+      {
+        cutoff: 2400, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+    ],
+    '1080p': [
+      {
+        cutoff: 2500, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+      },
+      {
+        cutoff: 3500, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+      {
+        cutoff: 4500, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+    ],
+    '4k': [
+      {
+        cutoff: 6000, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+      },
+      {
+        cutoff: 9000, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+      {
+        cutoff: 12000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+    ],
   },
   anime: {
-    '720p': [{
-      cutoff: 1000, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
-    },
-    {
-      cutoff: 1500, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    },
-    {
-      cutoff: 2000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    }],
-    // Add entries for 1080p, 4K, etc.
+    '720p': [
+      {
+        cutoff: 1000, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+      },
+      {
+        cutoff: 1500, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+      {
+        cutoff: 2000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+    ],
+    '1080p': [
+      {
+        cutoff: 1800, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+      },
+      {
+        cutoff: 2800, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+      {
+        cutoff: 4000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+    ],
+    '4k': [
+      {
+        cutoff: 5000, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+      },
+      {
+        cutoff: 9000, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+      {
+        cutoff: 12000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+      },
+    ],
   },
 };
 
@@ -245,6 +291,32 @@ const conformStreams = (file, container) => {
   return extraArguments;
 };
 
+const handleResolution = (file, resolution, handleFlag, bitrateCutoff, isAnime) => {
+  const response = { processFile: false, infoLog: '' };
+  response.infoLog += `${resolution} video detected. \n`;
+  if (!handleFlag) {
+    response.infoLog += `${resolution} handling disabled. \n`;
+    return response;
+  }
+  let currentBitrate = file.ffProbeData.streams[0].bit_rate;
+  if (Number.isNaN(currentBitrate)) {
+    currentBitrate = file.bit_rate;
+  }
+  if (currentBitrate <= bitrateCutoff) {
+    response.infoLog += `Bitrate is below ${bitrateCutoff} (${currentBitrate}). \n`;
+    return response;
+  }
+  const bitrateSettings = calculateBitrateSettings(resolution, currentBitrate, isAnime);
+  if (!bitrateSettings) {
+    response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
+    return response;
+  }
+
+  response.processFile = true;
+  response.bitrateSettings = bitrateSettings;
+  return response;
+};
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const plugin = (file, librarySettings, inputs, otherArguments) => {
   const lib = require('../methods/lib')();
@@ -267,6 +339,18 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
     r4KUHD: '4k',
     rDCI4K: '4k',
     rOther: 'Other',
+  };
+
+  const handleFlags = {
+    handle_hd: inputs.handle_hd,
+    handle_fhd: inputs.handle_fhd,
+    handle_uhd: inputs.handle_uhd,
+  };
+
+  const bitrateCutoffs = {
+    handle_hd: inputs.hd_bitrate_cutoff,
+    handle_fhd: inputs.fhd_bitrate_cutoff,
+    handle_uhd: inputs.uhd_bitrate_cutoff,
   };
 
   // Check if inputs.container has been configured. If it hasn't then exit plugin.
@@ -309,17 +393,6 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   const videoResolution = file.video_resolution;
   const codecName = file.ffProbeData.streams[0].codec_name.toLowerCase();
 
-  // Set up required variables.
-  let extraArguments = '';
-  let bitrateSettings = '';
-  // Target bitrate is calculated based on current bitrate and resolution.
-  let targetBitrate = 0;
-  // Allow some leeway under and over the targetBitrate.
-  let minimumBitrate = 0;
-  let maximumBitrate = 0;
-  let preset = 'medium';
-  let calculatedBitrateSettings = null;
-
   if ([resolutions.r480p, resolutions.r576p, resolutions.rOther].includes(videoResolution)) {
     // We have a SD video, abort.
     response.infoLog += 'SD video detected. \n';
@@ -327,75 +400,57 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
     return response;
   }
 
-  if (videoResolution === resolutions.r720p) {
-    // We have a HD video.
-    response.infoLog += 'HD video detected. \n';
-    if (inputs.handle_hd === false) {
-      response.infoLog += 'HD handling disabled. \n';
+  let resolutionSettings = null;
+
+  switch (videoResolution) {
+    case resolutions.r720p:
+      resolutionSettings = handleResolution(
+        file,
+        '720p',
+        handleFlags.handle_hd,
+        bitrateCutoffs.handle_hd,
+        inputs.anime,
+      );
+      break;
+    case resolutions.r1080p:
+      resolutionSettings = handleResolution(
+        file,
+        '1080p',
+        handleFlags.handle_fhd,
+        bitrateCutoffs.handle_fhd,
+        inputs.anime,
+      );
+      break;
+    case resolutions.r4KUHD:
+    case resolutions.rDCI4K:
+      resolutionSettings = handleResolution(
+        file,
+        '4k',
+        handleFlags.handle_uhd,
+        bitrateCutoffs.handle_uhd,
+        inputs.anime,
+      );
+      break;
+    default:
+      response.infoLog += 'Unknown video resolution detected. \n';
       response.processFile = false;
       return response;
-    }
-    if (inputs.hd_bitrate_cutoff !== '' && currentBitrate <= inputs.hd_bitrate_cutoff) {
-      response.infoLog += `Bitrate is below ${inputs.hd_bitrate_cutoff} (${currentBitrate}). \n`;
-      response.processFile = false;
-      return response;
-    }
-    calculatedBitrateSettings = calculateBitrateSettings('720p', currentBitrate, inputs.anime);
-    if (!calculatedBitrateSettings) {
-      response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
-      response.processFile = false;
-      return response;
-    }
-  } else if (videoResolution === resolutions.r1080p) {
-    // We have a FHD video.
-    response.infoLog += 'FHD video detected. \n';
-    if (inputs.handle_fhd === false) {
-      response.infoLog += 'FHD handling disabled. \n';
-      response.processFile = false;
-      return response;
-    }
-    if (inputs.fhd_bitrate_cutoff !== '' && currentBitrate <= inputs.fhd_bitrate_cutoff) {
-      response.infoLog += `Bitrate is below ${inputs.fhd_bitrate_cutoff} (${currentBitrate}). \n`;
-      response.processFile = false;
-      return response;
-    }
-    calculatedBitrateSettings = calculateBitrateSettings('1080p', currentBitrate, inputs.anime);
-    if (!calculatedBitrateSettings) {
-      response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
-      response.processFile = false;
-      return response;
-    }
-  } else if (videoResolution === resolutions.r4KUHD || videoResolution === resolutions.rDCI4K) {
-    // We have a UHD video.
-    response.infoLog += 'UHD video detected. \n';
-    if (inputs.handle_uhd === false) {
-      response.infoLog += 'UHD handling disabled. \n';
-      response.processFile = false;
-      return response;
-    }
-    if (currentBitrate <= inputs.uhd_bitrate_cutoff) {
-      response.infoLog += `Bitrate is below ${inputs.uhd_bitrate_cutoff} (${currentBitrate}). \n`;
-      response.processFile = false;
-      return response;
-    }
-    calculatedBitrateSettings = calculateBitrateSettings('4k', currentBitrate, inputs.anime);
-    if (!calculatedBitrateSettings) {
-      response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
-      response.processFile = false;
-      return response;
-    }
-  } else {
-    // We have a video with an unknown resolution.
-    response.infoLog += 'Unknown video resolution detected. \n';
+  }
+
+  if (resolutionSettings && !resolutionSettings.processFile) {
+    response.infoLog += resolutionSettings.infoLog;
     response.processFile = false;
     return response;
   }
 
+  // Set up required variables.
+  let extraArguments = '';
   // Apply calculated bitrate settings.
-  targetBitrate = calculatedBitrateSettings.targetBitrate;
-  minimumBitrate = calculatedBitrateSettings.minimumBitrate;
-  maximumBitrate = calculatedBitrateSettings.maximumBitrate;
-  preset = calculatedBitrateSettings.preset;
+  const { targetBitrate } = resolutionSettings.bitrateSettings;
+  // Allow some leeway under and over the targetBitrate.
+  const { minimumBitrate } = resolutionSettings.bitrateSettings;
+  const { maximumBitrate } = resolutionSettings.bitrateSettings;
+  const { preset } = resolutionSettings.bitrateSettings;
 
   // If targetBitrate comes out as 0 then something has gone wrong and bitrates could not be calculcated.
   // Cancel plugin completely.
@@ -430,7 +485,7 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   }
 
   // Set bitrateSettings variable using bitrate information calulcated earlier.
-  bitrateSettings = `-b:v ${targetBitrate}k -minrate ${minimumBitrate}k `
+  const bitrateSettings = `-b:v ${targetBitrate}k -minrate ${minimumBitrate}k `
     + `-maxrate ${maximumBitrate}k -bufsize ${currentBitrate}k`;
   // Print to infoLog information around file & bitrate settings.
   response.infoLog += `Container for output selected as ${inputs.container}. \n`;
