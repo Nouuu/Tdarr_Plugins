@@ -280,11 +280,12 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   let extraArguments = '';
   let bitrateSettings = '';
   // Target bitrate is calculated based on current bitrate and resolution.
-  const targetBitrate = 0;
+  let targetBitrate = 0;
   // Allow some leeway under and over the targetBitrate.
-  const minimumBitrate = 0;
-  const maximumBitrate = 0;
-  const preset = 'medium';
+  let minimumBitrate = 0;
+  let maximumBitrate = 0;
+  let preset = 'medium';
+  let calculatedBitrateSettings = null;
 
   if ([resolutions.r480p, resolutions.r576p, resolutions.rOther].includes(videoResolution)) {
     // We have a SD video, abort.
@@ -374,44 +375,34 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   // Check if force_conform option is checked.
   // If so then check streams and add any extra parameters required to make file conform with output format.
   if (inputs.force_conform === true) {
-    if (inputs.container.toLowerCase() === 'mkv') {
+    const container = inputs.container.toLowerCase();
+    const subtitleCodecsMkv = ['mov_text', 'eia_608', 'timed_id3'];
+    const subtitleCodecsMp4 = ['hdmv_pgs_subtitle', 'eia_608', 'subrip', 'timed_id3'];
+
+    if (container === 'mkv') {
+      // Remove data from streams
       extraArguments += '-map -0:d ';
-      for (let i = 0; i < file.ffProbeData.streams.length; i++) {
+      file.ffProbeData.streams.forEach((stream, index) => {
         try {
-          if (
-            file.ffProbeData.streams[i].codec_name
-              .toLowerCase() === 'mov_text'
-            || file.ffProbeData.streams[i].codec_name
-              .toLowerCase() === 'eia_608'
-            || file.ffProbeData.streams[i].codec_name
-              .toLowerCase() === 'timed_id3'
-          ) {
-            extraArguments += `-map -0:${i} `;
+          if (subtitleCodecsMkv.includes(stream.codec_name.toLowerCase())) {
+            // Remove unwanted subtitle streams
+            extraArguments += `-map -0:${index} `;
           }
         } catch (err) {
-          // Error
+          // Handle error
         }
-      }
-    }
-    if (inputs.container.toLowerCase() === 'mp4') {
-      for (let i = 0; i < file.ffProbeData.streams.length; i++) {
+      });
+    } else if (container === 'mp4') {
+      file.ffProbeData.streams.forEach((stream, index) => {
         try {
-          if (
-            file.ffProbeData.streams[i].codec_name
-              .toLowerCase() === 'hdmv_pgs_subtitle'
-            || file.ffProbeData.streams[i].codec_name
-              .toLowerCase() === 'eia_608'
-            || file.ffProbeData.streams[i].codec_name
-              .toLowerCase() === 'subrip'
-            || file.ffProbeData.streams[i].codec_name
-              .toLowerCase() === 'timed_id3'
-          ) {
-            extraArguments += `-map -0:${i} `;
+          if (subtitleCodecsMp4.includes(stream.codec_name.toLowerCase())) {
+            // Remove unwanted subtitle streams
+            extraArguments += `-map -0:${index} `;
           }
         } catch (err) {
-          // Error
+          // Handle error
         }
-      }
+      });
     }
   }
 
@@ -451,50 +442,6 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
   response.processFile = true;
   response.infoLog += 'File is not hevc or vp9. Transcoding. \n';
   return response;
-};
-
-// Bitrate settings maps
-const bitrateSettingsMap = {
-  general: {
-    '720p': [{
-      cutoff: 1200, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
-    },
-    {
-      cutoff: 1800, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    },
-    {
-      cutoff: 2400, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    }],
-    // Add entries for 1080p, 4K, etc.
-  },
-  anime: {
-    '720p': [{
-      cutoff: 1000, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
-    },
-    {
-      cutoff: 1500, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    },
-    {
-      cutoff: 2000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
-    }],
-    // Add entries for 1080p, 4K, etc.
-  },
-};
-
-const calculateBitrateSettings = (resolution, currentBitrate, isAnime) => {
-  const settingsMap = isAnime ? bitrateSettingsMap.anime : bitrateSettingsMap.general;
-  const settings = settingsMap[resolution].find((setting) => currentBitrate > setting.cutoff);
-
-  if (!settings) return null; // Return null if no settings match
-
-  const targetBitrate = currentBitrate * settings.multiplier;
-  const minimumBitrate = targetBitrate * (settings.minPercentage / 100);
-  const maximumBitrate = targetBitrate * (settings.maxPercentage / 100);
-  const { preset } = settings;
-
-  return {
-    targetBitrate, minimumBitrate, maximumBitrate, preset,
-  };
 };
 
 module.exports.details = details;
