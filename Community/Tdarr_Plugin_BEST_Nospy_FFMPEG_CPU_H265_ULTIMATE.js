@@ -168,6 +168,50 @@ const details = () => ({
   ],
 });
 
+// Bitrate settings maps
+const bitrateSettingsMap = {
+  general: {
+    '720p': [{
+      cutoff: 1200, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+    },
+    {
+      cutoff: 1800, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    },
+    {
+      cutoff: 2400, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    }],
+    // Add entries for 1080p, 4K, etc.
+  },
+  anime: {
+    '720p': [{
+      cutoff: 1000, multiplier: 0.6, minPercentage: 70, maxPercentage: 130, preset: 'slow',
+    },
+    {
+      cutoff: 1500, multiplier: 0.55, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    },
+    {
+      cutoff: 2000, multiplier: 0.5, minPercentage: 70, maxPercentage: 130, preset: 'medium',
+    }],
+    // Add entries for 1080p, 4K, etc.
+  },
+};
+
+const calculateBitrateSettings = (resolution, currentBitrate, isAnime) => {
+  const settingsMap = isAnime ? bitrateSettingsMap.anime : bitrateSettingsMap.general;
+  const settings = settingsMap[resolution].find((setting) => currentBitrate > setting.cutoff);
+
+  if (!settings) return null; // Return null if no settings match
+
+  const targetBitrate = currentBitrate * settings.multiplier;
+  const minimumBitrate = targetBitrate * (settings.minPercentage / 100);
+  const maximumBitrate = targetBitrate * (settings.maxPercentage / 100);
+  const { preset } = settings;
+
+  return {
+    targetBitrate, minimumBitrate, maximumBitrate, preset,
+  };
+};
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const plugin = (file, librarySettings, inputs, otherArguments) => {
   const lib = require('../methods/lib')();
@@ -262,11 +306,12 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
       response.processFile = false;
       return response;
     }
-    // todo: is anime ?
-    // todo: set videoBitrate with a multiplier on current bitrate
-    // todo: set videoMinBitrate with a multiplier based on videoBitrate
-    // todo: set videoMaxBitrate with a multiplier based on videoBitrate
-    // todo: set preset
+    calculatedBitrateSettings = calculateBitrateSettings('720p', currentBitrate, inputs.anime);
+    if (!calculatedBitrateSettings) {
+      response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
+      response.processFile = false;
+      return response;
+    }
   } else if (videoResolution === resolutions.r1080p) {
     // We have a FHD video.
     response.infoLog += 'FHD video detected. \n';
@@ -280,11 +325,12 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
       response.processFile = false;
       return response;
     }
-    // todo: is anime ?
-    // todo: set videoBitrate with a multiplier on current bitrate
-    // todo: set videoMinBitrate with a multiplier based on videoBitrate
-    // todo: set videoMaxBitrate with a multiplier based on videoBitrate
-    // todo: set preset
+    calculatedBitrateSettings = calculateBitrateSettings('1080p', currentBitrate, inputs.anime);
+    if (!calculatedBitrateSettings) {
+      response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
+      response.processFile = false;
+      return response;
+    }
   } else if (videoResolution === resolutions.r4KUHD || videoResolution === resolutions.rDCI4K) {
     // We have a UHD video.
     response.infoLog += 'UHD video detected. \n';
@@ -298,17 +344,24 @@ const plugin = (file, librarySettings, inputs, otherArguments) => {
       response.processFile = false;
       return response;
     }
-    // todo: is anime ?
-    // todo: set videoBitrate with a multiplier on current bitrate
-    // todo: set videoMinBitrate with a multiplier based on videoBitrate
-    // todo: set videoMaxBitrate with a multiplier based on videoBitrate
-    // todo: set preset
+    calculatedBitrateSettings = calculateBitrateSettings('4k', currentBitrate, inputs.anime);
+    if (!calculatedBitrateSettings) {
+      response.infoLog += 'Current bitrate is below cutoff or unsupported resolution. Skipping transcoding. \n';
+      response.processFile = false;
+      return response;
+    }
   } else {
     // We have a video with an unknown resolution.
     response.infoLog += 'Unknown video resolution detected. \n';
     response.processFile = false;
     return response;
   }
+
+  // Apply calculated bitrate settings.
+  targetBitrate = calculatedBitrateSettings.targetBitrate;
+  minimumBitrate = calculatedBitrateSettings.minimumBitrate;
+  maximumBitrate = calculatedBitrateSettings.maximumBitrate;
+  preset = calculatedBitrateSettings.preset;
 
   // If targetBitrate comes out as 0 then something has gone wrong and bitrates could not be calculcated.
   // Cancel plugin completely.
