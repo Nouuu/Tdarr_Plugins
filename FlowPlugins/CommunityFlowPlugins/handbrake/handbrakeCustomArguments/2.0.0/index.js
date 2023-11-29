@@ -37,51 +37,109 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.plugin = exports.details = void 0;
+var fs_1 = require("fs");
 var cliUtils_1 = require("../../../../FlowHelpers/1.0.0/cliUtils");
 var fileUtils_1 = require("../../../../FlowHelpers/1.0.0/fileUtils");
 /* eslint no-plusplus: ["error", { "allowForLoopAfterthoughts": true }] */
 var details = function () { return ({
-    name: 'Normalize Audio',
-    description: 'Normalize Audio',
+    name: 'HandBrake Custom Arguments',
+    description: 'HandBrake Custom Arguments',
     style: {
-        borderColor: '#6efefc',
+        borderColor: 'green',
     },
-    tags: 'video',
+    tags: '',
     isStartPlugin: false,
     pType: '',
-    requiresVersion: '2.11.01',
+    requiresVersion: '2.14.01',
     sidebarPosition: -1,
     icon: '',
     inputs: [
         {
-            label: 'i',
-            name: 'i',
-            type: 'string',
-            defaultValue: '-23.0',
+            label: 'Use JSON Preset',
+            name: 'useJsonPreset',
+            type: 'boolean',
+            defaultValue: 'false',
             inputUI: {
-                type: 'text',
+                type: 'dropdown',
+                options: [
+                    'false',
+                    'true',
+                ],
             },
-            tooltip: "\"i\" value used in loudnorm pass \\n\n              defaults to -23.0",
+            tooltip: 'Specify whether to use a JSON preset or not',
         },
         {
-            label: 'lra',
-            name: 'lra',
+            label: 'Custom Arguments',
+            name: 'customArguments',
             type: 'string',
-            defaultValue: '7.0',
+            defaultValue: '-Z "Fast 1080p30" --all-subtitles',
             inputUI: {
                 type: 'text',
+                displayConditions: {
+                    logic: 'AND',
+                    sets: [
+                        {
+                            logic: 'AND',
+                            inputs: [
+                                {
+                                    name: 'useJsonPreset',
+                                    value: 'true',
+                                    condition: '!==',
+                                },
+                            ],
+                        },
+                    ],
+                },
             },
-            tooltip: "Desired lra value. \\n Defaults to 7.0  \n            ",
+            tooltip: 'Specify HandBrake arguments',
         },
         {
-            label: 'tp',
-            name: 'tp',
+            label: 'Paste Contents of .json File Here',
+            name: 'jsonPreset',
             type: 'string',
-            defaultValue: '-2.0',
+            defaultValue: '',
             inputUI: {
-                type: 'text',
+                type: 'textarea',
+                style: {
+                    height: '100px',
+                },
+                displayConditions: {
+                    logic: 'AND',
+                    sets: [
+                        {
+                            logic: 'AND',
+                            inputs: [
+                                {
+                                    name: 'useJsonPreset',
+                                    value: 'true',
+                                    condition: '===',
+                                },
+                            ],
+                        },
+                    ],
+                },
             },
-            tooltip: "Desired \"tp\" value. \\n Defaults to -2.0 \n              ",
+            tooltip: 'Paste a HandBrake JSON preset here.',
+        },
+        {
+            label: 'Container',
+            name: 'container',
+            type: 'string',
+            defaultValue: 'mkv',
+            inputUI: {
+                type: 'dropdown',
+                options: [
+                    'original',
+                    'mkv',
+                    'mp4',
+                    'm4v',
+                    'avi',
+                    'mov',
+                    'mpg',
+                    'mpeg',
+                ],
+            },
+            tooltip: 'Specify output container',
         },
     ],
     outputs: [
@@ -94,87 +152,49 @@ var details = function () { return ({
 exports.details = details;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 var plugin = function (args) { return __awaiter(void 0, void 0, void 0, function () {
-    var lib, loudNorm_i, lra, tp, container, outputFilePath, normArgs1, cli, res, lines, idx, parts, infoLine, loudNormValues, normArgs2, cli2, res2;
+    var lib, customArguments, useJsonPreset, presetString, container, outputFilePath, cliArgs, presetPath, preset, cli, res;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 lib = require('../../../../../methods/lib')();
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars,no-param-reassign
                 args.inputs = lib.loadDefaultValues(args.inputs, details);
-                loudNorm_i = args.inputs.i;
-                lra = args.inputs.lra;
-                tp = args.inputs.tp;
-                container = (0, fileUtils_1.getContainer)(args.inputFileObj._id);
+                customArguments = String(args.inputs.customArguments);
+                useJsonPreset = args.inputs.useJsonPreset;
+                presetString = String(args.inputs.jsonPreset);
+                container = String(args.inputs.container);
+                if (container === 'original') {
+                    container = (0, fileUtils_1.getContainer)(args.inputFileObj._id);
+                }
                 outputFilePath = "".concat((0, fileUtils_1.getPluginWorkDir)(args), "/").concat((0, fileUtils_1.getFileName)(args.inputFileObj._id), ".").concat(container);
-                normArgs1 = [
+                cliArgs = [
                     '-i',
-                    args.inputFileObj._id,
-                    '-af',
-                    "loudnorm=I=".concat(loudNorm_i, ":LRA=").concat(lra, ":TP=").concat(tp, ":print_format=json"),
-                    '-f',
-                    'null',
-                    'NUL',
-                    '-map',
-                    '0',
-                    '-c',
-                    'copy',
+                    "".concat(args.inputFileObj._id),
+                    '-o',
+                    "".concat(outputFilePath),
                 ];
-                cli = new cliUtils_1.CLI({
-                    cli: args.ffmpegPath,
-                    spawnArgs: normArgs1,
-                    spawnOpts: {},
-                    jobLog: args.jobLog,
-                    outputFilePath: '',
-                    inputFileObj: args.inputFileObj,
-                    logFullCliOutput: args.logFullCliOutput,
-                    updateWorker: args.updateWorker,
-                });
-                return [4 /*yield*/, cli.runCli()];
+                presetPath = "".concat(args.workDir, "/preset.json");
+                if (!useJsonPreset) return [3 /*break*/, 2];
+                preset = JSON.parse(presetString);
+                return [4 /*yield*/, fs_1.promises.writeFile(presetPath, JSON.stringify(preset, null, 2))];
             case 1:
-                res = _a.sent();
-                if (res.cliExitCode !== 0) {
-                    args.jobLog('Running FFmpeg failed');
-                    throw new Error('FFmpeg failed');
-                }
-                lines = res.errorLogFull;
-                idx = -1;
-                // get last index of Parsed_loudnorm
-                lines.forEach(function (line, i) {
-                    if (line.includes('Parsed_loudnorm')) {
-                        idx = i;
-                    }
+                _a.sent();
+                cliArgs.push('--preset-import-file');
+                cliArgs.push(presetPath);
+                cliArgs.push('-Z');
+                cliArgs.push(preset.PresetList[0].PresetName);
+                return [3 /*break*/, 3];
+            case 2:
+                cliArgs.push.apply(cliArgs, args.deps.parseArgsStringToArgv(customArguments, '', ''));
+                _a.label = 3;
+            case 3:
+                args.updateWorker({
+                    CLIType: args.handbrakePath,
+                    preset: cliArgs.join(' '),
                 });
-                if (idx === -1) {
-                    throw new Error('Failed to find loudnorm in report, please rerun');
-                }
-                parts = lines[idx].split(']');
-                parts.shift();
-                infoLine = parts.join(']');
-                infoLine = infoLine.split('\r\n').join('').split('\t').join('');
-                loudNormValues = JSON.parse(infoLine);
-                args.jobLog("Loudnorm first pass values returned:  \n".concat(JSON.stringify(loudNormValues)));
-                normArgs2 = [
-                    '-i',
-                    args.inputFileObj._id,
-                    '-map',
-                    '0',
-                    '-c',
-                    'copy',
-                    '-c:a',
-                    'aac',
-                    '-b:a',
-                    '192k',
-                    '-af',
-                    "loudnorm=print_format=summary:linear=true:I=".concat(loudNorm_i, ":LRA=").concat(lra, ":TP=").concat(tp, ":")
-                        + "measured_i=".concat(loudNormValues.input_i, ":")
-                        + "measured_lra=".concat(loudNormValues.input_lra, ":")
-                        + "measured_tp=".concat(loudNormValues.input_tp, ":")
-                        + "measured_thresh=".concat(loudNormValues.input_thresh, ":offset=").concat(loudNormValues.target_offset, " "),
-                    outputFilePath,
-                ];
-                cli2 = new cliUtils_1.CLI({
-                    cli: args.ffmpegPath,
-                    spawnArgs: normArgs2,
+                cli = new cliUtils_1.CLI({
+                    cli: args.handbrakePath,
+                    spawnArgs: cliArgs,
                     spawnOpts: {},
                     jobLog: args.jobLog,
                     outputFilePath: outputFilePath,
@@ -182,13 +202,14 @@ var plugin = function (args) { return __awaiter(void 0, void 0, void 0, function
                     logFullCliOutput: args.logFullCliOutput,
                     updateWorker: args.updateWorker,
                 });
-                return [4 /*yield*/, cli2.runCli()];
-            case 2:
-                res2 = _a.sent();
-                if (res2.cliExitCode !== 0) {
-                    args.jobLog('Running FFmpeg failed');
-                    throw new Error('FFmpeg failed');
+                return [4 /*yield*/, cli.runCli()];
+            case 4:
+                res = _a.sent();
+                if (res.cliExitCode !== 0) {
+                    args.jobLog('Running HandBrake failed');
+                    throw new Error('Running HandBrake failed');
                 }
+                args.logOutcome('tSuc');
                 return [2 /*return*/, {
                         outputFileObj: {
                             _id: outputFilePath,
